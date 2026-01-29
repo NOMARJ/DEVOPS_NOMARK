@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "devops": {
+      "command": "python",
+      "args": ["-m", "devops_mcp"],
+      "cwd": "/path/to/devops-mcp",
+      "env": {
+        "AZURE_SUBSCRIPTION_ID": "your-subscription-id",
+        "AZURE_TENANT_ID": "your-tenant-id",
+        "AZURE_CLIENT_ID": "your-client-id",
+        "AZURE_CLIENT_SECRET": "your-client-secret",
+        
+        "SUPABASE_URL": "https://your-project.supabase.co",
+        "SUPABASE_SERVICE_KEY": "your-service-key",
+        
+        "GITHUB_TOKEN": "ghp_your-token",
+        
+        "VERCEL_TOKEN": "your-vercel-token",
+        "VERCEL_TEAM_ID": "your-team-id",
+        
+        "N8N_URL": "https://n8n.yourdomain.com",
+        "N8N_API_KEY": "your-n8n-api-key",
+        
+        "SLACK_BOT_TOKEN": "xoxb-your-token",
+        "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/...",
+        
+        "SKILLS_DIR": "/path/to/your/skills"
+      }
+    }
+  }
+}

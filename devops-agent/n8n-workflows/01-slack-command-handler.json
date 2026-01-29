@@ -1,0 +1,215 @@
+{
+  "name": "DevOps Agent - Slack Command Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-dev-command",
+        "options": {}
+      },
+      "id": "webhook-slack",
+      "name": "Slack Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "slack-dev-command"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Slack slash command\nconst body = $input.first().json.body;\n\n// Slack sends form-urlencoded data\nconst text = body.text || '';\nconst userId = body.user_id;\nconst userName = body.user_name;\nconst channelId = body.channel_id;\nconst responseUrl = body.response_url;\n\n// Parse command: /dev <action> <args>\n// Examples:\n//   /dev start platform-wizard 5\n//   /dev status\n//   /dev stop\n//   /dev list\n\nconst parts = text.trim().split(/\\s+/);\nconst action = parts[0] || 'help';\nconst args = parts.slice(1);\n\nlet parsed = {\n  action,\n  userId,\n  userName,\n  channelId,\n  responseUrl,\n  raw: text,\n  timestamp: new Date().toISOString()\n};\n\nswitch (action) {\n  case 'start':\n    parsed.prd = args[0] || 'platform-wizard';\n    parsed.storyCount = parseInt(args[1]) || 5;\n    parsed.branch = args[2] || 'main';\n    break;\n  case 'status':\n    parsed.taskId = args[0] || 'latest';\n    break;\n  case 'stop':\n  case 'pause':\n    parsed.taskId = args[0] || 'current';\n    break;\n  case 'list':\n    parsed.filter = args[0] || 'active';\n    break;\n  default:\n    parsed.action = 'help';\n}\n\nreturn [{ json: parsed }];"
+      },
+      "id": "parse-command",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "start",
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "start", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "status", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "stop",
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "stop", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "help",
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "help", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "route-action",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": { "__rl": true, "mode": "list", "value": "public" },
+        "table": { "__rl": true, "mode": "list", "value": "dev_tasks" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prd_name": "={{ $json.prd }}",
+            "story_count": "={{ $json.storyCount }}",
+            "branch": "={{ $json.branch }}",
+            "status": "queued",
+            "requested_by": "={{ $json.userName }}",
+            "slack_channel_id": "={{ $json.channelId }}",
+            "slack_response_url": "={{ $json.responseUrl }}"
+          }
+        },
+        "options": { "returnFields": ["id", "prd_name", "story_count", "created_at"] }
+      },
+      "id": "insert-task",
+      "name": "Insert Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 140],
+      "credentials": { "postgres": { "id": "YOUR_POSTGRES_CREDENTIAL_ID", "name": "DevOps DB" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://management.azure.com/subscriptions/{{ $env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/devops-agent-rg/providers/Microsoft.Compute/virtualMachines/devops-agent-vm/start?api-version=2023-09-01",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftAzureOAuth2Api",
+        "options": {}
+      },
+      "id": "start-vm",
+      "name": "Start Azure VM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 140],
+      "credentials": { "microsoftAzureOAuth2Api": { "id": "YOUR_AZURE_CREDENTIAL_ID", "name": "Azure" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DEVOPS_AGENT_WEBHOOK_URL }}/trigger",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"task_id\": \"{{ $('Insert Task').item.json.id }}\",\n  \"repo_url\": \"{{ $env.FLOWMETRICS_REPO_URL }}\",\n  \"repo_branch\": \"{{ $('Parse Command').item.json.branch }}\",\n  \"prd_path\": \"ralph/{{ $('Parse Command').item.json.prd }}/scripts/ralph\",\n  \"story_count\": {{ $('Parse Command').item.json.storyCount }}\n}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "trigger-agent",
+      "name": "Trigger Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Parse Command').item.json.responseUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"response_type\": \"in_channel\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"🚀 *DevOps Agent Started*\\n\\n• PRD: `{{ $('Parse Command').item.json.prd }}`\\n• Stories: {{ $('Parse Command').item.json.storyCount }}\\n• Branch: `{{ $('Parse Command').item.json.branch }}`\\n• Task ID: `{{ $('Insert Task').item.json.id }}`\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "slack-confirm-start",
+      "name": "Confirm Start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.responseUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"response_type\": \"ephemeral\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"📖 *DevOps Agent Commands*\\n\\n`/dev start <prd> [stories] [branch]`\\nStart autonomous development\\n• `prd`: PRD folder name (e.g., platform-wizard, file-ingestion)\\n• `stories`: Number of stories to complete (default: 5)\\n• `branch`: Git branch (default: main)\\n\\n`/dev status [task_id]`\\nCheck task status\\n\\n`/dev stop [task_id]`\\nStop running task\\n\\n`/dev list [active|completed|all]`\\nList tasks\\n\\n*Examples:*\\n• `/dev start platform-wizard 10`\\n• `/dev start file-ingestion 5 feature/upload`\\n• `/dev status`\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "show-help",
+      "name": "Show Help",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": { "__rl": true, "mode": "list", "value": "public" },
+        "table": { "__rl": true, "mode": "list", "value": "dev_tasks" },
+        "limit": 5,
+        "sort": { "values": [{ "column": "created_at", "direction": "DESC" }] },
+        "where": {
+          "values": [{ "column": "status", "operator": "in", "value": "('queued','running')" }]
+        }
+      },
+      "id": "get-status",
+      "name": "Get Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 300],
+      "credentials": { "postgres": { "id": "YOUR_POSTGRES_CREDENTIAL_ID", "name": "DevOps DB" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://management.azure.com/subscriptions/{{ $env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/devops-agent-rg/providers/Microsoft.Compute/virtualMachines/devops-agent-vm/deallocate?api-version=2023-09-01",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftAzureOAuth2Api",
+        "options": {}
+      },
+      "id": "stop-vm",
+      "name": "Stop Azure VM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 400],
+      "credentials": { "microsoftAzureOAuth2Api": { "id": "YOUR_AZURE_CREDENTIAL_ID", "name": "Azure" } }
+    }
+  ],
+  "connections": {
+    "Slack Webhook": { "main": [[{ "node": "Parse Command", "type": "main", "index": 0 }]] },
+    "Parse Command": { "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]] },
+    "Route Action": {
+      "main": [
+        [{ "node": "Insert Task", "type": "main", "index": 0 }],
+        [{ "node": "Get Status", "type": "main", "index": 0 }],
+        [{ "node": "Stop Azure VM", "type": "main", "index": 0 }],
+        [{ "node": "Show Help", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert Task": { "main": [[{ "node": "Start Azure VM", "type": "main", "index": 0 }]] },
+    "Start Azure VM": { "main": [[{ "node": "Trigger Agent", "type": "main", "index": 0 }]] },
+    "Trigger Agent": { "main": [[{ "node": "Confirm Start", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [{ "name": "devops-agent" }],
+  "triggerCount": 1
+}

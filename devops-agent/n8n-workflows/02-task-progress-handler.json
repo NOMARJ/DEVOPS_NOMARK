@@ -1,0 +1,128 @@
+{
+  "name": "DevOps Agent - Task Progress Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "task-progress",
+        "options": {}
+      },
+      "id": "webhook-progress",
+      "name": "Progress Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "task-progress"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": { "__rl": true, "mode": "list", "value": "public" },
+        "table": { "__rl": true, "mode": "list", "value": "dev_tasks" },
+        "limit": 1,
+        "where": {
+          "values": [{ "column": "id", "value": "={{ $json.body.task_id }}" }]
+        }
+      },
+      "id": "get-task",
+      "name": "Get Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "YOUR_POSTGRES_CREDENTIAL_ID", "name": "DevOps DB" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": { "__rl": true, "mode": "list", "value": "public" },
+        "table": { "__rl": true, "mode": "list", "value": "dev_tasks" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $('Progress Webhook').item.json.body.status }}",
+            "current_story": "={{ $('Progress Webhook').item.json.body.extra?.story_id || null }}",
+            "stories_completed": "={{ $('Progress Webhook').item.json.body.extra?.stories_completed || $json.stories_completed }}",
+            "last_update": "={{ $('Progress Webhook').item.json.body.timestamp }}",
+            "error_message": "={{ $('Progress Webhook').item.json.body.status === 'error' ? $('Progress Webhook').item.json.body.message : null }}"
+          }
+        },
+        "where": {
+          "values": [{ "column": "id", "value": "={{ $('Progress Webhook').item.json.body.task_id }}" }]
+        }
+      },
+      "id": "update-task",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 300],
+      "credentials": { "postgres": { "id": "YOUR_POSTGRES_CREDENTIAL_ID", "name": "DevOps DB" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const progress = $('Progress Webhook').item.json.body;\nconst task = $('Get Task').item.json;\n\nlet emoji, color, title;\n\nswitch (progress.status) {\n  case 'started':\n    emoji = '🚀';\n    color = '#36a64f';\n    title = 'Task Started';\n    break;\n  case 'running':\n    emoji = '⚡';\n    color = '#2196F3';\n    title = 'In Progress';\n    break;\n  case 'completed':\n    emoji = '✅';\n    color = '#36a64f';\n    title = 'Task Completed';\n    break;\n  case 'error':\n    emoji = '❌';\n    color = '#ff0000';\n    title = 'Task Failed';\n    break;\n  default:\n    emoji = 'ℹ️';\n    color = '#808080';\n    title = 'Update';\n}\n\nconst slackMessage = {\n  channel: task.slack_channel_id,\n  blocks: [\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `${emoji} *${title}*\\n\\n${progress.message}`\n      }\n    },\n    {\n      type: 'context',\n      elements: [\n        {\n          type: 'mrkdwn',\n          text: `PRD: \`${task.prd_name}\` | Stories: ${progress.extra?.stories_completed || 0}/${task.story_count} | <${progress.extra?.pr_url || '#'}|View PR>`\n        }\n      ]\n    }\n  ]\n};\n\n// If completed or error, consider stopping the VM\nconst shouldStopVM = progress.status === 'completed' || progress.status === 'error';\n\nreturn [{\n  json: {\n    slackMessage,\n    shouldStopVM,\n    status: progress.status,\n    taskId: progress.task_id\n  }\n}];"
+      },
+      "id": "format-slack",
+      "name": "Format Slack Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "mode": "id", "value": "={{ $json.slackMessage.channel }}" },
+        "text": "={{ $json.slackMessage.blocks[0].text.text }}",
+        "blocksUi": "={{ JSON.stringify($json.slackMessage.blocks) }}",
+        "otherOptions": {}
+      },
+      "id": "send-slack",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1120, 300],
+      "credentials": { "slackApi": { "id": "YOUR_SLACK_CREDENTIAL_ID", "name": "Slack Bot" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "leftValue": "={{ $json.shouldStopVM }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ]
+        }
+      },
+      "id": "check-stop-vm",
+      "name": "Should Stop VM?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://management.azure.com/subscriptions/{{ $env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/devops-agent-rg/providers/Microsoft.Compute/virtualMachines/devops-agent-vm/deallocate?api-version=2023-09-01",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftAzureOAuth2Api",
+        "options": {}
+      },
+      "id": "stop-vm-complete",
+      "name": "Stop VM (Complete)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 240],
+      "credentials": { "microsoftAzureOAuth2Api": { "id": "YOUR_AZURE_CREDENTIAL_ID", "name": "Azure" } }
+    }
+  ],
+  "connections": {
+    "Progress Webhook": { "main": [[{ "node": "Get Task", "type": "main", "index": 0 }]] },
+    "Get Task": { "main": [[{ "node": "Update Task", "type": "main", "index": 0 }]] },
+    "Update Task": { "main": [[{ "node": "Format Slack Message", "type": "main", "index": 0 }]] },
+    "Format Slack Message": { "main": [[{ "node": "Send to Slack", "type": "main", "index": 0 }]] },
+    "Send to Slack": { "main": [[{ "node": "Should Stop VM?", "type": "main", "index": 0 }]] },
+    "Should Stop VM?": { "main": [[{ "node": "Stop VM (Complete)", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [{ "name": "devops-agent" }],
+  "triggerCount": 1
+}

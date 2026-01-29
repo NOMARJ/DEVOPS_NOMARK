@@ -1,0 +1,16 @@
+[Unit]
+Description=NOMARK Linear Webhook Server
+After=network.target
+
+[Service]
+Type=simple
+User=devops
+WorkingDirectory=/home/devops/scripts
+Environment="PATH=/home/devops/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/devops/config/.env
+ExecStart=/home/devops/venv/bin/python /home/devops/scripts/linear-webhook.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

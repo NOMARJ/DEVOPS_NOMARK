@@ -1,0 +1,10 @@
+## Codebase Patterns
+
+<!-- Add reusable patterns here as you discover them -->
+<!-- These are read FIRST by future iterations -->
+
+---
+
+## Progress Log
+
+<!-- Append to this file, never replace -->

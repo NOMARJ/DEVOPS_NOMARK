@@ -1,0 +1,341 @@
+{
+  "name": "PRD Watcher - Auto Trigger DevOps Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-prd-webhook",
+        "options": {}
+      },
+      "id": "webhook-github",
+      "name": "GitHub Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "prd-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [],
+          "string": [
+            {
+              "value1": "={{ $json.ref }}",
+              "operation": "equals",
+              "value2": "refs/heads/main"
+            }
+          ]
+        }
+      },
+      "id": "filter-main-branch",
+      "name": "Is Main Branch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if any commits added/modified files in /prds folder\nconst commits = $input.first().json.commits || [];\n\nconst prdChanges = [];\n\nfor (const commit of commits) {\n  const addedPrds = (commit.added || []).filter(f => f.startsWith('prds/') && f.endsWith('PRD.md'));\n  const modifiedPrds = (commit.modified || []).filter(f => f.startsWith('prds/') && f.endsWith('PRD.md'));\n  \n  for (const file of [...addedPrds, ...modifiedPrds]) {\n    // Extract feature name from path: prds/feature-name/PRD.md\n    const match = file.match(/prds\\/([^\\/]+)\\/PRD\\.md/);\n    if (match) {\n      prdChanges.push({\n        feature: match[1],\n        file: file,\n        action: addedPrds.includes(file) ? 'added' : 'modified',\n        commit_sha: commit.id,\n        commit_message: commit.message,\n        author: commit.author?.name || 'unknown'\n      });\n    }\n  }\n}\n\nreturn prdChanges.map(prd => ({ json: prd }));"
+      },
+      "id": "extract-prd-changes",
+      "name": "Extract PRD Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "has-prd-changes",
+      "name": "Has PRD Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if PRD is marked as Ready\nconst prd = $input.first().json;\n\n// This would ideally fetch the PRD content and check status\n// For now, we'll check if it's a new PRD (added) or explicitly triggered\n\nconst shouldTrigger = prd.action === 'added' || \n                       prd.commit_message.toLowerCase().includes('[ready]') ||\n                       prd.commit_message.toLowerCase().includes('[auto]');\n\nreturn [{\n  json: {\n    ...prd,\n    should_trigger: shouldTrigger,\n    trigger_reason: shouldTrigger ? \n      (prd.action === 'added' ? 'New PRD added' : 'PRD marked ready') :\n      'PRD modified but not marked ready'\n  }\n}];"
+      },
+      "id": "check-prd-status",
+      "name": "Check PRD Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.should_trigger }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "should-trigger",
+      "name": "Should Trigger Agent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#devops-agent",
+        "text": "=🔔 *New PRD Detected*\n\n*Feature:* {{ $json.feature }}\n*Action:* {{ $json.action }}\n*Author:* {{ $json.author }}\n*Commit:* `{{ $json.commit_sha.substring(0, 7) }}`\n\n{{ $json.trigger_reason }}\n\n_Starting DevOps Agent in 30 seconds..._\n_React with ❌ to cancel_",
+        "otherOptions": {}
+      },
+      "id": "notify-slack-starting",
+      "name": "Notify: Starting",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1450, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-creds",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-for-cancel",
+      "name": "Wait 30s (Cancel Window)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1650, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DEVOPS_AGENT_WEBHOOK }}/start-task",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "feature",
+              "value": "={{ $json.feature }}"
+            },
+            {
+              "name": "prd_path",
+              "value": "=prds/{{ $json.feature }}/PRD.md"
+            },
+            {
+              "name": "triggered_by",
+              "value": "=github-webhook"
+            },
+            {
+              "name": "commit_sha",
+              "value": "={{ $json.commit_sha }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "trigger-devops-agent",
+      "name": "Trigger DevOps Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "channel": "#devops-agent",
+        "text": "=🚀 *DevOps Agent Started*\n\n*Feature:* {{ $json.feature }}\n*PRD:* `prds/{{ $json.feature }}/PRD.md`\n\nThe agent is now working on this feature. Updates will be posted here.",
+        "otherOptions": {}
+      },
+      "id": "notify-slack-started",
+      "name": "Notify: Started",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2050, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-creds",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#devops-agent",
+        "text": "=📝 *PRD Updated (Not Auto-Triggered)*\n\n*Feature:* {{ $json.feature }}\n*Author:* {{ $json.author }}\n\nTo start implementation, either:\n• Add `[ready]` to your commit message\n• Use `/dev start {{ $json.feature }}`",
+        "otherOptions": {}
+      },
+      "id": "notify-slack-modified",
+      "name": "Notify: Modified Only",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1450, 400],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-creds",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-prd-changes",
+      "name": "No PRD Changes",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 500]
+    },
+    {
+      "parameters": {},
+      "id": "not-main-branch",
+      "name": "Not Main Branch",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [650, 500]
+    }
+  ],
+  "connections": {
+    "GitHub Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is Main Branch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Main Branch?": {
+      "main": [
+        [
+          {
+            "node": "Extract PRD Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not Main Branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PRD Changes": {
+      "main": [
+        [
+          {
+            "node": "Has PRD Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PRD Changes?": {
+      "main": [
+        [
+          {
+            "node": "Check PRD Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No PRD Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check PRD Status": {
+      "main": [
+        [
+          {
+            "node": "Should Trigger Agent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Trigger Agent?": {
+      "main": [
+        [
+          {
+            "node": "Notify: Starting",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify: Modified Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Starting": {
+      "main": [
+        [
+          {
+            "node": "Wait 30s (Cancel Window)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30s (Cancel Window)": {
+      "main": [
+        [
+          {
+            "node": "Trigger DevOps Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger DevOps Agent": {
+      "main": [
+        [
+          {
+            "node": "Notify: Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "devops-agent"
+    },
+    {
+      "name": "automation"
+    }
+  ]
+}

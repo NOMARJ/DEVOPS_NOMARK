@@ -1,0 +1,50 @@
+{
+  "project": "ProjectName",
+  "branchName": "feature/feature-name",
+  "description": "Feature description - what and why",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Schema: Add field to database",
+      "description": "As a developer, I need to store X in the database.",
+      "acceptanceCriteria": [
+        "Add column to table with appropriate type and default",
+        "Generate and run migration successfully",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Backend: Add server action for X",
+      "description": "As a developer, I need an API to handle X.",
+      "acceptanceCriteria": [
+        "Server action accepts correct parameters",
+        "Validates input appropriately",
+        "Returns expected response format",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Frontend: Display X in UI",
+      "description": "As a user, I want to see X so that I can Y.",
+      "acceptanceCriteria": [
+        "Component renders X correctly",
+        "Styling matches design system",
+        "Accessible (keyboard, screen reader)",
+        "Typecheck passes",
+        "Verify in browser"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

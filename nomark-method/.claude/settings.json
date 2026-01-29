@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx *)",
+      "Bash(bun *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(which *)",
+      "Bash(echo *)",
+      "Bash(pwd)",
+      "Bash(cd *)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": {
+          "toolNames": ["Write", "Edit"]
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm run format --silent 2>/dev/null || npx prettier --write \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

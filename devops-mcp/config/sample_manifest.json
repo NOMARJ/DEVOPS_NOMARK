@@ -1,0 +1,113 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2025-01-25T00:00:00Z",
+  "skills": [
+    {
+      "id": "documents/docx",
+      "name": "Word Document Generation",
+      "category": "documents",
+      "path": "documents/docx",
+      "description": "Create and edit Word documents with proper formatting, styles, and templates",
+      "triggers": ["word", "docx", "document", "report", "letter"],
+      "dependencies": ["python-docx"]
+    },
+    {
+      "id": "documents/xlsx",
+      "name": "Excel Spreadsheet Generation",
+      "category": "documents",
+      "path": "documents/xlsx",
+      "description": "Create Excel spreadsheets with formulas, charts, and formatting",
+      "triggers": ["excel", "xlsx", "spreadsheet", "data", "chart"],
+      "dependencies": ["openpyxl"]
+    },
+    {
+      "id": "documents/pptx",
+      "name": "PowerPoint Presentation",
+      "category": "documents",
+      "path": "documents/pptx",
+      "description": "Create PowerPoint presentations with slides, layouts, and graphics",
+      "triggers": ["powerpoint", "pptx", "presentation", "slides"],
+      "dependencies": ["python-pptx"]
+    },
+    {
+      "id": "documents/pdf",
+      "name": "PDF Generation",
+      "category": "documents",
+      "path": "documents/pdf",
+      "description": "Create and fill PDF forms and documents",
+      "triggers": ["pdf", "form", "fill"],
+      "dependencies": ["pypdf", "reportlab"]
+    },
+    {
+      "id": "patterns/sveltekit",
+      "name": "SvelteKit Patterns",
+      "category": "patterns",
+      "path": "patterns/sveltekit",
+      "description": "SvelteKit component patterns, routing, and best practices",
+      "triggers": ["svelte", "sveltekit", "frontend", "component", "page"]
+    },
+    {
+      "id": "patterns/postgres",
+      "name": "PostgreSQL Patterns",
+      "category": "patterns",
+      "path": "patterns/postgres",
+      "description": "PostgreSQL database design, migrations, and query patterns",
+      "triggers": ["postgres", "postgresql", "database", "sql", "migration"]
+    },
+    {
+      "id": "patterns/n8n",
+      "name": "n8n Workflow Patterns",
+      "category": "patterns",
+      "path": "patterns/n8n",
+      "description": "n8n workflow design patterns and node configurations",
+      "triggers": ["n8n", "workflow", "automation", "webhook"]
+    },
+    {
+      "id": "integrations/carbone",
+      "name": "Carbone Report Generation",
+      "category": "integrations",
+      "path": "integrations/carbone",
+      "description": "Generate documents from templates using Carbone",
+      "triggers": ["carbone", "template", "report", "generate"]
+    },
+    {
+      "id": "integrations/metabase",
+      "name": "Metabase Integration",
+      "category": "integrations",
+      "path": "integrations/metabase",
+      "description": "Metabase dashboard embedding and question API",
+      "triggers": ["metabase", "dashboard", "analytics", "embed"]
+    },
+    {
+      "id": "agents/ralph",
+      "name": "Ralph Autonomous Agent",
+      "category": "agents",
+      "path": "agents/ralph",
+      "description": "Ralph configuration for autonomous PRD-driven development",
+      "triggers": ["ralph", "autonomous", "agent", "prd"]
+    },
+    {
+      "id": "data/sftp",
+      "name": "SFTP File Processing",
+      "category": "data",
+      "path": "data/sftp",
+      "description": "SFTP file upload, download, and processing patterns",
+      "triggers": ["sftp", "file", "upload", "download"]
+    },
+    {
+      "id": "data/validation",
+      "name": "Data Validation",
+      "category": "data",
+      "path": "data/validation",
+      "description": "Data validation schemas and quality checks",
+      "triggers": ["validation", "schema", "quality", "check"]
+    }
+  ],
+  "categories": [
+    "documents",
+    "patterns",
+    "integrations",
+    "agents",
+    "data"
+  ]
+}
