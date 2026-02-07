@@ -1,0 +1,170 @@
+{
+  "projects": [
+    {
+      "id": "flowmetrics",
+      "name": "FlowMetrics",
+      "repo": "NOMARK/flowmetrics-portal",
+      "stack": "sveltekit-postgres",
+      "description": "Flow metrics portal with Svelte and PostgreSQL",
+      "priority": 1,
+      "active": true,
+      "azure": {
+        "resourceGroup": "flowmetrics-rg",
+        "location": "australiaeast",
+        "deploymentSlots": ["staging", "production"],
+        "appService": "flowmetrics-app"
+      },
+      "github": {
+        "org": "NOMARK",
+        "repo": "flowmetrics-portal",
+        "defaultBranch": "main"
+      }
+    },
+    {
+      "id": "instaindex",
+      "name": "InstaIndex",
+      "repo": "NOMARK/instaindex",
+      "stack": "nextjs-supabase",
+      "description": "Instant indexing service with Next.js and Supabase",
+      "priority": 2,
+      "active": true,
+      "azure": {
+        "resourceGroup": "instaindex-rg",
+        "location": "australiaeast",
+        "deploymentSlots": ["staging", "production"],
+        "appService": "instaindex-app"
+      },
+      "github": {
+        "org": "NOMARK",
+        "repo": "instaindex",
+        "defaultBranch": "main"
+      }
+    },
+    {
+      "id": "inhhale-v2",
+      "name": "Inhhale iOS App",
+      "repo": "NOMARK/inhhale-v2",
+      "stack": "swift-ios",
+      "description": "Medical breathing therapy iOS app for VCD/ILO patients implementing clinically-validated EILOBI techniques prescribed by Speech-Language Pathologists",
+      "priority": 4,
+      "active": true,
+      "azure": {
+        "resourceGroup": "inhhale-rg",
+        "location": "australiaeast",
+        "storageAccount": "inhhalestorage",
+        "appCenter": {
+          "org": "NOMARK",
+          "app": "inhhale-ios",
+          "ownerName": "NOMARK",
+          "appName": "inhhale-ios"
+        },
+        "keyVault": "inhhale-kv"
+      },
+      "github": {
+        "org": "NOMARK",
+        "repo": "inhhale-v2",
+        "defaultBranch": "main"
+      },
+      "ios": {
+        "bundleId": "com.nomark.inhhale",
+        "teamId": "YOUR_TEAM_ID",
+        "provisioning": "automatic",
+        "minDeploymentTarget": "15.0",
+        "xcodeprojPath": "inhhale.xcodeproj"
+      },
+      "build": {
+        "scheme": "inhhale",
+        "configuration": "Debug",
+        "testTarget": "inhhaleTests"
+      }
+    },
+    {
+      "id": "policyai",
+      "name": "PolicyAI",
+      "repo": "NOMARK/policyai",
+      "stack": "nextjs-supabase",
+      "description": "AI-powered policy analysis and generation",
+      "priority": 3,
+      "active": false,
+      "azure": {
+        "resourceGroup": "policyai-rg",
+        "location": "australiaeast",
+        "deploymentSlots": ["staging", "production"],
+        "appService": "policyai-app"
+      },
+      "github": {
+        "org": "NOMARK",
+        "repo": "policyai",
+        "defaultBranch": "main"
+      }
+    }
+  ],
+  "defaults": {
+    "model": "claude-opus-4-5-20251101",
+    "maxConcurrentTasks": 1,
+    "autoShutdown": true,
+    "azure": {
+      "subscription": "ac7254fa-1f0b-433e-976c-b0430909c5ac",
+      "subscriptionName": "NOMARK",
+      "location": "australiaeast",
+      "vmResourceGroup": "nomark-devops-rg",
+      "vmName": "nomark-devops-vm",
+      "vmSize": "Standard_B4ms",
+      "vmAutoShutdownTime": "19:00",
+      "keyVault": "nomark-devops-kv",
+      "database": {
+        "host": "nomark-devops-db.postgres.database.azure.com",
+        "name": "nomark_devops",
+        "user": "devops_admin",
+        "port": 5432,
+        "sslMode": "require"
+      },
+      "functionApp": {
+        "name": "nomark-vm-starter",
+        "resourceGroup": "nomark-devops-rg",
+        "url": "https://nomark-vm-starter.azurewebsites.net"
+      }
+    },
+    "github": {
+      "org": "NOMARK",
+      "defaultBranch": "main",
+      "prApprovalRequired": false,
+      "autoMerge": false
+    },
+    "slack": {
+      "channel": "devops-automation",
+      "threadReplies": true,
+      "progressUpdates": true,
+      "mentionOnError": true
+    },
+    "claude": {
+      "permissions": {
+        "bash": [
+          "npm run *",
+          "git *",
+          "gh *",
+          "psql *",
+          "python3 *",
+          "az *"
+        ],
+        "fileAccess": "all",
+        "networkAccess": true
+      },
+      "retryOnError": true,
+      "maxRetries": 3
+    }
+  },
+  "metadata": {
+    "version": "2.0.0",
+    "lastUpdated": "2026-01-31T00:00:00Z",
+    "deployedOn": "azure",
+    "projectSelectorEnabled": true,
+    "features": {
+      "interactiveProjectSelector": true,
+      "autoProjectRegistration": true,
+      "azureIntegration": true,
+      "keyVaultSecrets": true,
+      "vmAutoShutdown": true
+    }
+  }
+}
