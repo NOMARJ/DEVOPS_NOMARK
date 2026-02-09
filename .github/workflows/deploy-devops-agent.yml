@@ -1,0 +1,178 @@
+name: Deploy DevOps Agent to Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      vm_size:
+        description: 'VM size (optional, leave empty to use default)'
+        required: false
+        type: string
+        default: 'Standard_D4ds_v5'
+  push:
+    branches:
+      - main
+    paths:
+      - 'devops-agent/terraform/**'
+      - '.github/workflows/deploy-devops-agent.yml'
+
+env:
+  TF_VERSION: '1.0'
+  WORKING_DIR: devops-agent/terraform
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: Terraform ${{ github.event.inputs.action || 'plan' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: devops-agent/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create Terraform variables file
+        run: |
+          cat > secrets.tfvars <<EOF
+          ssh_public_key = "${{ secrets.SSH_PUBLIC_KEY }}"
+          anthropic_api_key = "${{ secrets.ANTHROPIC_API_KEY }}"
+          github_token = "${{ secrets.GH_PAT_TOKEN }}"
+          n8n_webhook_base_url = "${{ secrets.N8N_WEBHOOK_BASE_URL }}"
+          default_repo_url = "${{ secrets.DEFAULT_REPO_URL }}"
+          devops_agent_repo = "${{ github.repository }}"
+          vm_size = "${{ github.event.inputs.vm_size || 'Standard_D4ds_v5' }}"
+          location = "australiaeast"
+          auto_shutdown_time = "1900"
+          EOF
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -var-file="secrets.tfvars" -out=tfplan -no-color
+          terraform show -no-color tfplan > plan.txt
+        continue-on-error: true
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: devops-agent/terraform/tfplan
+          retention-days: 5
+
+      - name: Comment Plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('devops-agent/terraform/plan.txt', 'utf8');
+            const output = `#### Terraform Plan 📝
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${plan}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Terraform Apply
+        if: |
+          (github.event.inputs.action == 'apply' ||
+           (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+          steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -var-file="secrets.tfvars" -auto-approve
+
+      - name: Get Outputs
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        id: outputs
+        run: |
+          echo "vm_ip=$(terraform output -raw vm_public_ip)" >> $GITHUB_OUTPUT
+          echo "ssh_command=$(terraform output -raw ssh_command)" >> $GITHUB_OUTPUT
+          echo "webhook_url=$(terraform output -raw webhook_url)" >> $GITHUB_OUTPUT
+
+      - name: Deployment Summary
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🚀 DevOps Agent Deployment Complete
+
+          ## Access Information
+
+          | Resource | Value |
+          |----------|-------|
+          | **VM IP** | \`${{ steps.outputs.outputs.vm_ip }}\` |
+          | **SSH Command** | \`${{ steps.outputs.outputs.ssh_command }}\` |
+          | **Webhook URL** | \`${{ steps.outputs.outputs.webhook_url }}\` |
+
+          ## Next Steps
+
+          1. Wait 5-10 minutes for cloud-init to complete
+          2. Test SSH: \`${{ steps.outputs.outputs.ssh_command }}\`
+          3. Check health: \`curl ${{ steps.outputs.outputs.webhook_url }}/health\`
+          4. Configure n8n webhooks with the webhook URL above
+
+          ## Management Commands
+
+          **Start VM:**
+          \`\`\`bash
+          az vm start --resource-group devops-agent-rg --name devops-agent-vm
+          \`\`\`
+
+          **Stop VM:**
+          \`\`\`bash
+          az vm deallocate --resource-group devops-agent-rg --name devops-agent-vm
+          \`\`\`
+          EOF
+
+      - name: Cleanup
+        if: always()
+        run: rm -f secrets.tfvars tfplan plan.txt

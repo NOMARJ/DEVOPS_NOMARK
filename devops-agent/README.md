@@ -54,7 +54,28 @@ The VM auto-stops after task completion, so you only pay when work is being done
 - Anthropic API key
 - GitHub Personal Access Token
 
-## Quick Start
+## Deployment Options
+
+### 🚀 Option 1: GitHub Actions (Recommended)
+
+Deploy via GitHub Actions with OIDC authentication:
+
+```bash
+# Run setup script
+cd scripts
+./setup-github-actions.sh
+
+# Deploy via GitHub CLI
+gh workflow run deploy-devops-agent.yml -f action=apply
+```
+
+See [GitHub Actions Deployment Guide](docs/GITHUB_ACTIONS_DEPLOYMENT.md) for full documentation.
+
+### 💻 Option 2: Local Deployment
+
+Deploy from your local machine:
+
+## Quick Start (Local)
 
 ### 1. Clone and Configure
 
