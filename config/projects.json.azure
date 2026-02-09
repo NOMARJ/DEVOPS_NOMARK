@@ -145,18 +145,38 @@
           "gh *",
           "psql *",
           "python3 *",
-          "az *"
+          "az *",
+          "terraform *",
+          "pytest *",
+          "black *",
+          "ruff *"
         ],
         "fileAccess": "all",
         "networkAccess": true
       },
       "retryOnError": true,
-      "maxRetries": 3
+      "maxRetries": 3,
+      "agentTeams": {
+        "enabled": true,
+        "teammateMode": "tmux",
+        "roles": [
+          "infra-specialist",
+          "mcp-developer",
+          "security-reviewer",
+          "workflow-builder",
+          "qa-verifier"
+        ],
+        "hooks": {
+          "TeammateIdle": true,
+          "TaskCompleted": true
+        },
+        "maxTeammates": 5
+      }
     }
   },
   "metadata": {
-    "version": "2.0.0",
-    "lastUpdated": "2026-01-31T00:00:00Z",
+    "version": "3.0.0",
+    "lastUpdated": "2026-02-09T00:00:00Z",
     "deployedOn": "azure",
     "projectSelectorEnabled": true,
     "features": {
@@ -164,7 +184,8 @@
       "autoProjectRegistration": true,
       "azureIntegration": true,
       "keyVaultSecrets": true,
-      "vmAutoShutdown": true
+      "vmAutoShutdown": true,
+      "agentTeams": true
     }
   }
 }
