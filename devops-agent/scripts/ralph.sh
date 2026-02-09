@@ -20,6 +20,7 @@ set -e
 TOOL="claude"
 MAX_STORIES=50
 STORIES_TO_RUN=5
+TEAM_MODE=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
         --tool)
             TOOL="$2"
             shift 2
+            ;;
+        --team)
+            TEAM_MODE=true
+            shift
             ;;
         *)
             if [[ "$1" =~ ^[0-9]+$ ]]; then
@@ -196,17 +201,17 @@ run_claude() {
     local story_id="$1"
     local prompt="$2"
     local output_file=$(mktemp)
-    
+
     log "Running Claude Code for $story_id..."
-    
+
     # Run Claude Code with the prompt
     # Using --print to get output, and piping the prompt
     echo "$prompt" | claude --print 2>&1 | tee "$output_file"
-    
+
     local exit_code=${PIPESTATUS[1]}
     local output=$(cat "$output_file")
     rm -f "$output_file"
-    
+
     # Check for completion or blocking
     if echo "$output" | grep -q "STORY COMPLETE"; then
         return 0
@@ -216,6 +221,67 @@ run_claude() {
         return 2
     else
         # Assume success if no explicit failure
+        return 0
+    fi
+}
+
+run_claude_team() {
+    local stories_json="$1"
+    local output_file=$(mktemp)
+
+    log "Running Claude Code in AGENT TEAM mode..."
+    log "Spawning team for parallel story execution..."
+
+    # Build a team prompt that includes all stories to process in parallel
+    local team_prompt
+    team_prompt=$(cat << TEAMPROMPT
+# Agent Team Task: Parallel Story Execution
+
+You are the team lead for a DevOps development task. Create an agent team to work on the following stories in parallel.
+
+## Stories to Implement
+
+$stories_json
+
+## Team Structure
+
+Spawn teammates based on the stories above. Each teammate should:
+1. Own one or more stories (avoid file conflicts between teammates)
+2. Read CLAUDE.md and any relevant AGENTS.md for project conventions
+3. Check if implementation already exists before creating new code
+4. Implement the story following acceptance criteria
+5. Run verification (tests, linting) before marking complete
+6. Commit with message format: "feat(<story-id>): <title>"
+
+## Coordination Rules
+
+- Require plan approval for teammates before they make changes
+- Each teammate must run verification before completing their task
+- If a story depends on another, ensure the dependency completes first
+- Message teammates when changes affect shared files
+
+## Completion
+
+When ALL stories are complete, output "STORY COMPLETE" on its own line.
+If any story is blocked, output "BLOCKED: <reason>" on its own line.
+
+Wait for all teammates to finish before reporting completion.
+TEAMPROMPT
+    )
+
+    echo "$team_prompt" | claude --print 2>&1 | tee "$output_file"
+
+    local exit_code=${PIPESTATUS[1]}
+    local output=$(cat "$output_file")
+    rm -f "$output_file"
+
+    if echo "$output" | grep -q "STORY COMPLETE"; then
+        return 0
+    elif echo "$output" | grep -q "BLOCKED:"; then
+        local reason=$(echo "$output" | grep "BLOCKED:" | head -1)
+        warn "Team blocked: $reason"
+        return 2
+    else
         return 0
     fi
 }
@@ -253,7 +319,58 @@ main() {
     local stories_to_process=("${incomplete_stories[@]:0:$STORIES_TO_RUN}")
     
     log "Will process ${#stories_to_process[@]} stories"
-    
+    if [ "$TEAM_MODE" = true ]; then
+        log "MODE: Agent Team (parallel execution)"
+    else
+        log "MODE: Sequential (one story at a time)"
+    fi
+
+    # =========================================================================
+    # Team Mode: Process stories in parallel via agent teams
+    # =========================================================================
+    if [ "$TEAM_MODE" = true ]; then
+        notify "running" "Spawning agent team for ${#stories_to_process[@]} stories" "{\"mode\": \"team\", \"stories\": ${#stories_to_process[@]}}"
+
+        # Build JSON array of all stories for the team
+        local stories_for_team=""
+        for story_id in "${stories_to_process[@]}"; do
+            local story_details=$(get_story_details "$story_id")
+            local title=$(echo "$story_details" | jq -r '.title')
+            local description=$(echo "$story_details" | jq -r '.description')
+            local criteria=$(echo "$story_details" | jq -r '.acceptanceCriteria | join("; ")')
+            stories_for_team="${stories_for_team}
+### $story_id: $title
+**Description:** $description
+**Acceptance Criteria:** $criteria
+"
+        done
+
+        local result=0
+        run_claude_team "$stories_for_team" || result=$?
+
+        if [ $result -eq 0 ]; then
+            # Mark all stories as complete
+            for story_id in "${stories_to_process[@]}"; do
+                mark_story_complete "$story_id"
+                STORIES_COMPLETED=$((STORIES_COMPLETED + 1))
+                local story_title=$(get_story_title "$story_id")
+                echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Completed (team): $story_id - $story_title" >> "$PROGRESS_FILE"
+            done
+            notify "progress" "Team completed all ${#stories_to_process[@]} stories" "{\"stories_completed\": $STORIES_COMPLETED, \"mode\": \"team\"}"
+            log "Team completed all stories"
+        elif [ $result -eq 2 ]; then
+            warn "Team encountered blockers"
+            notify "blocked" "Team blocked on some stories" "{\"mode\": \"team\"}"
+        else
+            error "Team execution failed"
+            notify "error" "Team execution failed" "{\"mode\": \"team\"}"
+        fi
+    else
+
+    # =========================================================================
+    # Sequential Mode: Process stories one at a time
+    # =========================================================================
+
     # Process each story
     for story_id in "${stories_to_process[@]}"; do
         local story_title=$(get_story_title "$story_id")
@@ -305,7 +422,9 @@ main() {
         # Small delay between stories
         sleep 2
     done
-    
+
+    fi  # End of team mode / sequential mode branch
+
     log "=========================================="
     log "Ralph completed!"
     log "Stories completed: $STORIES_COMPLETED / ${#stories_to_process[@]}"

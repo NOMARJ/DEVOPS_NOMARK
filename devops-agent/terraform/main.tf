@@ -311,7 +311,7 @@ runcmd:
   - mkdir -p /home/${var.admin_username}/{repos,logs,scripts}
   - chown -R ${var.admin_username}:${var.admin_username} /home/${var.admin_username}
   
-  # Set up environment
+  # Set up environment (with agent teams support)
   - |
     cat > /home/${var.admin_username}/.devops-env << 'ENVFILE'
     export ANTHROPIC_API_KEY="${var.anthropic_api_key}"
@@ -319,13 +319,33 @@ runcmd:
     export N8N_WEBHOOK_BASE_URL="${var.n8n_webhook_base_url}"
     export REPOS_DIR="/home/${var.admin_username}/repos"
     export LOGS_DIR="/home/${var.admin_username}/logs"
+    export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
     ENVFILE
   - chown ${var.admin_username}:${var.admin_username} /home/${var.admin_username}/.devops-env
   - chmod 600 /home/${var.admin_username}/.devops-env
-  
+
   # Add to bashrc
   - echo 'source ~/.devops-env' >> /home/${var.admin_username}/.bashrc
-  
+
+  # Clone DEVOPS_NOMARK repo for team configs and skills
+  - |
+    if [ -n "${var.devops_agent_repo}" ]; then
+      su - ${var.admin_username} -c "git clone ${var.devops_agent_repo} /home/${var.admin_username}/devops-nomark" || true
+    fi
+
+  # Set up Claude Code user-level settings for agent teams
+  - mkdir -p /home/${var.admin_username}/.claude
+  - |
+    cat > /home/${var.admin_username}/.claude/settings.json << 'CLSETTINGS'
+    {
+      "env": {
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+      },
+      "teammateMode": "tmux"
+    }
+    CLSETTINGS
+  - chown -R ${var.admin_username}:${var.admin_username} /home/${var.admin_username}/.claude
+
   # Set up Git
   - |
     su - ${var.admin_username} -c "git config --global credential.helper store"
@@ -367,6 +387,7 @@ write_files:
       REPO_BRANCH="$${3:-main}"
       PRD_PATH="$${4:-ralph/scripts/ralph}"
       STORY_COUNT="$${5:-5}"
+      TEAM_MODE="$${6}"
       
       LOG_FILE="$LOGS_DIR/task-$TASK_ID.log"
       
@@ -435,7 +456,13 @@ write_files:
       export TASK_ID
       export N8N_WEBHOOK_BASE_URL
       
-      if ./scripts/ralph/ralph.sh --tool claude "$STORY_COUNT" 2>&1 | tee -a "$LOG_FILE"; then
+      RALPH_ARGS="--tool claude $STORY_COUNT"
+      if [ "$TEAM_MODE" = "--team" ]; then
+        RALPH_ARGS="--tool claude --team $STORY_COUNT"
+        log "Running in AGENT TEAM mode"
+      fi
+
+      if ./scripts/ralph/ralph.sh $RALPH_ARGS 2>&1 | tee -a "$LOG_FILE"; then
         log "Ralph completed successfully"
         notify "completed" "All stories completed" "{\"stories_completed\": $STORY_COUNT}"
       else
@@ -497,12 +524,13 @@ write_files:
               repo_branch = data.get('repo_branch', 'main')
               prd_path = data.get('prd_path', 'ralph/scripts/ralph')
               story_count = data.get('story_count', 5)
-              
+              team_mode = data.get('team_mode', False)
+
               if not repo_url:
                   self.send_error(400, "repo_url is required")
                   return
-              
-              # Run task in background
+
+              # Run task in background (supports team mode)
               cmd = [
                   f"{SCRIPTS_DIR}/run-task.sh",
                   str(task_id),
@@ -511,6 +539,8 @@ write_files:
                   prd_path,
                   str(story_count)
               ]
+              if team_mode:
+                  cmd.append("--team")
               
               def run_task():
                   subprocess.Popen(
@@ -584,6 +614,12 @@ write_files:
       node --version && echo "  ✅ Node.js installed"
       claude --version 2>/dev/null && echo "  ✅ Claude Code installed" || echo "  ❌ Claude Code not found"
       git --version && echo "  ✅ Git installed"
+      tmux -V 2>/dev/null && echo "  ✅ tmux installed (agent teams split-pane)" || echo "  ❌ tmux not found"
+      echo ""
+      echo "Agent Teams:"
+      [ "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" = "1" ] && echo "  ✅ Agent teams enabled" || echo "  ❌ Agent teams disabled"
+      [ -f ~/.claude/settings.json ] && echo "  ✅ Claude settings configured" || echo "  ❌ Claude settings missing"
+      ls ~/.claude/teams/ 2>/dev/null && echo "  ✅ Active team configs found" || echo "  ℹ️  No active teams"
 EOF
 }
 

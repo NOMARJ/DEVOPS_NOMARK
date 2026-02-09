@@ -87,6 +87,57 @@ else
 fi
 
 # =============================================================================
+# Copy Claude Code team configuration
+# =============================================================================
+
+log "Setting up Claude Code agent teams config..."
+
+DEVOPS_NOMARK_DIR="$(dirname "$DEVOPS_AGENT_DIR")"
+
+if [ -d "$DEVOPS_NOMARK_DIR/.claude" ]; then
+    mkdir -p .claude/agents .claude/commands .claude/hooks .claude/skills/devops-teams
+
+    # Copy settings.json (agent teams enabled)
+    if [ -f "$DEVOPS_NOMARK_DIR/.claude/settings.json" ]; then
+        cp "$DEVOPS_NOMARK_DIR/.claude/settings.json" .claude/settings.json
+        log "Copied .claude/settings.json (agent teams enabled)"
+    fi
+
+    # Copy agent definitions
+    for agent in "$DEVOPS_NOMARK_DIR"/.claude/agents/*.md; do
+        if [ -f "$agent" ]; then
+            cp "$agent" ".claude/agents/$(basename "$agent")"
+        fi
+    done
+    log "Copied agent team definitions"
+
+    # Copy team commands
+    for cmd in "$DEVOPS_NOMARK_DIR"/.claude/commands/team-*.md; do
+        if [ -f "$cmd" ]; then
+            cp "$cmd" ".claude/commands/$(basename "$cmd")"
+        fi
+    done
+    log "Copied team commands"
+
+    # Copy hooks
+    for hook in "$DEVOPS_NOMARK_DIR"/.claude/hooks/*.sh; do
+        if [ -f "$hook" ]; then
+            cp "$hook" ".claude/hooks/$(basename "$hook")"
+            chmod +x ".claude/hooks/$(basename "$hook")"
+        fi
+    done
+    log "Copied quality gate hooks"
+
+    # Copy team skill
+    if [ -f "$DEVOPS_NOMARK_DIR/.claude/skills/devops-teams/SKILL.md" ]; then
+        cp "$DEVOPS_NOMARK_DIR/.claude/skills/devops-teams/SKILL.md" ".claude/skills/devops-teams/SKILL.md"
+        log "Copied devops-teams skill"
+    fi
+else
+    warn "DEVOPS_NOMARK .claude/ directory not found at $DEVOPS_NOMARK_DIR, skipping team config"
+fi
+
+# =============================================================================
 # Copy skills
 # =============================================================================
 
@@ -253,9 +304,15 @@ echo "Created files:"
 echo "  - CLAUDE.md (project context for Claude)"
 echo "  - AGENTS.md (coding conventions)"
 echo "  - skills/ (reusable skill instructions)"
+echo "  - .claude/ (agent teams config, hooks, commands)"
 if [ -n "$PRD_NAME" ]; then
     echo "  - ralph/ralph-$PRD_NAME/ (PRD structure)"
 fi
+echo ""
+echo "Agent Teams:"
+echo "  - 5 specialist agents (infra, mcp, security, workflow, qa)"
+echo "  - 3 team commands (/team-infra, /team-review, /team-deploy)"
+echo "  - Quality gate hooks (TeammateIdle, TaskCompleted)"
 echo ""
 echo "Next steps:"
 echo "  1. Edit CLAUDE.md with your project details"
@@ -263,5 +320,6 @@ echo "  2. Edit AGENTS.md with your coding conventions"
 if [ -n "$PRD_NAME" ]; then
     echo "  3. Edit ralph/ralph-$PRD_NAME/scripts/ralph/prd.json with user stories"
     echo "  4. Run: /dev start $PRD_NAME 5"
+    echo "  5. Run with teams: /dev start $PRD_NAME 5 --team"
 fi
 echo ""
